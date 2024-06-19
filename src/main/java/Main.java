@@ -21,13 +21,16 @@ public class Main {
         Options op = new Options();
 
         // Sintaxis: Option(comando corto, comando largo, si recibe un parametro, descripcion)
+        op.addOption("em", "embed", false, "Indica que se va a ocultar informacion en un archivo BMP.");
+        op.addOption("in", true, "Archivo que se va a ocultar.");
         op.addOption("ex", "extract", false, "Indica que se va a extraer informacion de un archivo BMP.");
-        op.addOption("p", true, "Archivo BMP del cual extraemos informacion.");
+        op.addOption("p", true, "Archivo BMP del cual extraemos/metemos informacion.");
         op.addOption("out", true, "Nombre del archivo de salida a obtener.");
         op.addOption("steg", true, "Algoritmo de esteganografiado: <LSB1 | LSB4 | LSBI>");
         op.addOption("a", true, "Cifrado: <aes128 | aes192 | aes256 | des>");
         op.addOption("m", true, "Modo de encadenamiento a utilizar: <ecb | cfb | ofb | cbc>");
         op.addOption("pass", true, "Contrasenia de encripcion");
+        //System.out.println(getBitAtPos((byte) 0b00000001, 7));
 
         // Creamos un parser para las opciones
         CommandLineParser parser = new DefaultParser();
@@ -47,50 +50,79 @@ public class Main {
         // - usar la opcion de extraer (-extract)
         // - usar la opcion de ocultar (-embed)
 
+        // Donde guardamos el archivo que proporciona el usuario
+        File bmp = null;
+        String outFileName = null, stegAlg = null;
+        // Estos parametros son obligatorios
+        if(cmd.hasOption("p") && cmd.hasOption("out") && cmd.hasOption("steg")) {
+            // Agarramos el nombre del archivo de output
+            outFileName = cmd.getOptionValue("out");
+            // Agarramos el metodo de esteganografiado
+            stegAlg = cmd.getOptionValue("steg");
+            // Verificamos que hayan puesto un algoritmo de esteganografiado valido
+            if(!stegAlg.toLowerCase().equals("lsb1") && !stegAlg.toLowerCase().equals("lsb4") && !stegAlg.toLowerCase().equals("lsbi"))
+                throw new RuntimeException("El algoritmo de esteganografiado proporcionado no es valido");
+            // Agarramos el archivo BMP
+            bmp = new File(cmd.getOptionValue("p"));
+            // Verificamos el archivo BMP sea correcto segun documentacion y enunciado
+            try { validateBMP(bmp); } catch (IOException e) { throw e; }
+        }else{
+            throw new RuntimeException("Faltan parametros");
+        }
+
+
         // EXTRACCION
         if(cmd.hasOption("extract") || cmd.hasOption("ex")) {
-            // Estos parametros son obligatorios
-            if(cmd.hasOption("p") && cmd.hasOption("out") && cmd.hasOption("steg")) {
-
-                // Agarramos el nombre del archivo de output
-                String outFileName = cmd.getOptionValue("out");
-                // Agarramos el metodo de esteganografiado
-                String stegAlg = cmd.getOptionValue("steg");
-
-                // Verificamos que hayan puesto un algoritmo de esteganografiado valido
-                if(!stegAlg.toLowerCase().equals("lsb1") && !stegAlg.toLowerCase().equals("lsb4") && !stegAlg.toLowerCase().equals("lsbi"))
-                    throw new RuntimeException("El algoritmo de esteganografiado proporcionado no es valido");
-
-                // Agarramos el archivo BMP
-                File bmp = new File(cmd.getOptionValue("p"));
-
-                // Verificamos el archivo BMP sea correcto segun documentacion y enunciado
-                try { validateBMP(bmp); } catch (IOException e) { throw e; }
-                System.out.println("(2) -- Empezando con el proceso de extraccion");
-
-                // En el caso que el payload este encriptado buscamos
-                // la contrasenia, el algoritmo de encriptacion y el
-                // metodo de encadenamiento
-                String pass = null, a = null, m = null;
-                if(cmd.hasOption("pass")){
-                    pass = cmd.getOptionValue("pass");
-                    // Obtenemos el algoritmo de cifrado
-                    if(cmd.hasOption("a"))
-                        a = cmd.getOptionValue("a");
-                    else
-                        throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
-                    // Obtenemos el metodo de encadenamiento
-                    if(cmd.hasOption("m"))
-                        m = cmd.getOptionValue("m");
-                    else
-                        throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
-                }
-
-                // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
-                File outputFile;
-                outputFile = StegoBMP.extract(bmp, outFileName, stegAlg, pass, a, m);
-
+            System.out.println("(2) -- Empezando con el proceso de extraccion");
+            // En el caso que el payload este encriptado buscamos
+            // la contrasenia, el algoritmo de encriptacion y el
+            // metodo de encadenamiento
+            String pass = null, a = null, m = null;
+            if(cmd.hasOption("pass")){
+                pass = cmd.getOptionValue("pass");
+                // Obtenemos el algoritmo de cifrado
+                if(cmd.hasOption("a"))
+                    a = cmd.getOptionValue("a");
+                else
+                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
+                // Obtenemos el metodo de encadenamiento
+                if(cmd.hasOption("m"))
+                    m = cmd.getOptionValue("m");
+                else
+                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
             }
+            // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
+            StegoBMP.extract(bmp, outFileName, stegAlg, pass, a, m);
+        } else if(cmd.hasOption("embed") || cmd.hasOption("em")) {
+            System.out.println("(2) -- Empezando con el proceso de ocultamiento");
+            // En el caso que el payload este encriptado buscamos
+            // la contrasenia, el algoritmo de encriptacion y el
+            // metodo de encadenamiento
+            String pass = null, a = null, m = null;
+
+            File fileToHide;
+            if(cmd.hasOption("in")) {
+                System.out.println(cmd.getOptionValue("in"));
+                fileToHide = new File(cmd.getOptionValue("in"));
+            }else{
+                throw new RuntimeException("El archivo a ocultar no es valido");
+            }
+
+            if(cmd.hasOption("pass")){
+                pass = cmd.getOptionValue("pass");
+                // Obtenemos el algoritmo de cifrado
+                if(cmd.hasOption("a"))
+                    a = cmd.getOptionValue("a");
+                else
+                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
+                // Obtenemos el metodo de encadenamiento
+                if(cmd.hasOption("m"))
+                    m = cmd.getOptionValue("m");
+                else
+                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
+            }
+            // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
+            StegoBMP.embed(fileToHide, bmp, outFileName, stegAlg, pass, a, m);
         }
 
     }
@@ -117,6 +149,10 @@ public class Main {
         }
         // Si llegamos aca esta todo bien
         System.out.println("(1) -- Archivo BMP cargado con exito");
+    }
+
+    private static int getBitAtPos(byte currentByte, int position){
+        return ((currentByte & (1 << position)) >> position) == 1 ? 1 : 0;
     }
 
 }

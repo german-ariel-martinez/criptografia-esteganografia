@@ -20,6 +20,143 @@ public class StegoBMP {
     private static final int DATA_SIZE_BYTES = 4;
 
 
+    public static void embed(File fileToHide, File bmp, String nout, String steg, String pass, String a, String m) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+        // Nos fijamos que metodo de esteganografiado estamos utilizando
+        // En base a esto vamos cuantos bits por byte contienen el archivo
+        // que esta oculto: LSB1 -> 1bit / LSB4 -> 4 / LSBI -> 1
+        int payloadBits = 1;
+        boolean improved = false;
+        if(steg.toLowerCase().equals("lsb4")) { payloadBits = 4; }
+        else if (steg.toLowerCase().equals("lsbi")) { improved = true; }
+
+        // Accedemos a los bytes del archivo BMP y los guardamos
+        // en la variable bmpBytes
+        FileInputStream bmpStream = new FileInputStream(bmp);
+        byte[] bmpBytes = new byte[(int) bmp.length()];
+        bmpStream.read(bmpBytes);
+
+        FileInputStream fileToHideStream = new FileInputStream(fileToHide);
+        byte[] fileHideBytes = new byte[(int) fileToHide.length()];
+        fileToHideStream.read(fileHideBytes);
+
+        int extensionStart = fileToHide.getName().lastIndexOf('.');
+        String extension = fileToHide.getName().substring(extensionStart).concat("\0");
+
+
+        // Hay que saltear el header del archivo BMP y
+        // En el caso de que sea LSBI los primeros 4 bytes
+        // representan con un 1 o un cero que bits se invirtieron
+        // segun el 2do y 3er bit menos significativo de cada byte.
+        int from = BMP_HEADER + (improved ? 4 : 0);
+
+        // En caso de que sea LSBI debemos tener una copia para poder comparar los bytes que cambian
+        byte[] originalBmp = bmpBytes.clone();
+
+        encodeLSB(payloadBits, fileHideBytes, extension, bmpBytes, from, improved);
+
+        if(improved) {
+            applyLSBI(bmpBytes, originalBmp, from);
+        }
+
+        // Guardar la imagen BMP modificada
+        String filename = nout.concat(".bmp");
+        File outputFile = new File(filename);
+        FileOutputStream os = new FileOutputStream(outputFile);
+        os.write(bmpBytes);
+        os.close();
+
+        System.out.println("(5) -- Finalizado");
+    }
+
+    private static byte[] encodeLSB(int nBits, byte[] fileToHideBytes, String extension, byte[] bmpBytes, int from, boolean isLsbi) throws IOException {
+        // Primero guardamos el tamaño del archivo a esconder
+        int sizeToHide = fileToHideBytes.length;
+        byte[] sizeToHideBytes = ByteBuffer.allocate(4).putInt(sizeToHide).array();
+
+        int bmpIndex = from;
+        // Escondemos el tamanio
+        bmpIndex = LSBEncoder(sizeToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+        // Escondemos el archivo
+        bmpIndex = LSBEncoder(fileToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+        // Escondemos la extension
+        byte[] extensionBytes = extension.getBytes();
+        LSBEncoder(extensionBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+
+        return bmpBytes;
+    }
+
+    private static int LSBEncoder(byte[] bytesToHide, byte[] bmpBytes, int from, int nBits, boolean isLsbi) {
+        if(!isLsbi) {
+            for (byte sizeByte : bytesToHide) {
+                for (int bitIndex = 0; bitIndex < 8; bitIndex += nBits) {
+                    int bitValue = (sizeByte >> (8 - nBits - bitIndex)) & ((1 << nBits) - 1);
+                    bmpBytes[from] = (byte) ((bmpBytes[from] & ~((1 << nBits) - 1)) | bitValue);
+                    from++;
+                }
+            }
+        } else {
+            for (byte sizeByte : bytesToHide) {
+                // Recordar que tenemos 4 bytes extra para el patron y por ende arrancamos de Green. (el from ya contempla el +4)
+                for (int bitIndex = 0; bitIndex < 8; bitIndex += nBits) {
+                    if ((from + 1) % 3 != 0) {
+                        int bitValue = (sizeByte >> (8 - nBits - bitIndex)) & ((1 << nBits) - 1);
+                        bmpBytes[from] = (byte) ((bmpBytes[from] & ~((1 << nBits) - 1)) | bitValue);
+                    }
+                    from++;
+                }
+            }
+
+        }
+
+        return from;
+
+    }
+
+    private static void applyLSBI(byte[] modifiedBmp, byte[] originalBmp, int from) {
+        int[] patterns = new int[4]; // {00,01,10,11}
+        int[] patternChangeCount = new int[4];
+
+        for(int i = from; i < originalBmp.length; i++){
+            if((i+1) % 3 != 0) {
+                int pattern = (originalBmp[i] & 0b00000110) >> 1; // Obtengo los 2 bits y luego moviendo a la derecha me queda un valor entre 0-3
+                patterns[pattern]++;
+                if (modifiedBmp[i] != originalBmp[i]) {
+                    patternChangeCount[pattern] += 1;
+                }
+            }
+        }
+
+        for(int i = 0; i < patterns.length; i++) {
+            int changed = patternChangeCount[i];
+            int total = patterns[i];
+            int unchanged = total - changed;
+
+            System.out.println("For pattern: " + i + " Changed: " + changed + " Total: " + patterns[i] + " Unchanged: " + unchanged);
+
+            //  lsb1(patron) || LSBI(lsb1(tamanio) || lsb1(archivo) || lsb1(ext))
+
+            if(changed > unchanged) {
+                for (int j = from; j < modifiedBmp.length; j++) {
+                    //Si no es rojo y si el byte pertenece al pattern actual, lo invertimos
+                    if (((j+1) % 3 != 0) && ((modifiedBmp[j] & 0b00000110) >> 1) == i) {
+                        modifiedBmp[j] ^= 1; // Invertimos el ultimo bit
+                    }
+                }
+                // Agregamos aplicando LSB1 el bit que se relaciona con el pattern en los primeros 4 bytes
+                // En este caso estariamos en (true), es decir, este patron flippeo
+                modifiedBmp[from - 4 + i] |= 0b00000001;
+                System.out.print("Puse un 1: ");
+                System.out.println(modifiedBmp[from - 4 + i] & 1);
+            } else {
+                // este patron no flipeo, (false)
+                modifiedBmp[from - 4 + i] &= 0b11111110;
+                System.out.print("Puse un 0: ");
+                System.out.println(modifiedBmp[from - 4 + i] & 1);
+            }
+        }
+    }
+
+
     // EXTRACT
     // - bmp: archivo BMP
     // - nout: nombre del archivo de output
@@ -27,7 +164,7 @@ public class StegoBMP {
     // - pass: contrasenia de la cual derviar key e IV
     // - a: algoritmo de cifrado
     // - m: modo de encadenamiento
-    public static File extract(File bmp, String nout, String steg, String pass, String a, String m) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static void extract(File bmp, String nout, String steg, String pass, String a, String m) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
 
         // Nos fijamos que metodo de esteganografiado estamos utilizando
         // En base a esto vamos cuantos bits por byte contienen el archivo
@@ -35,7 +172,7 @@ public class StegoBMP {
         int payloadBits = 1;
         boolean improved = false;
         if(steg.toLowerCase().equals("lsb4")) { payloadBits = 4; }
-        else if (steg.toLowerCase().equals("lsbi")) { improved = true; } //TODO: LSBI
+        else if (steg.toLowerCase().equals("lsbi")) { improved = true; }
 
         // Accedemos a los bytes del archivo BMP y los guardamos
         // en la variable bmpBytes
@@ -65,6 +202,8 @@ public class StegoBMP {
 
         // Obtengo el size del archivo secreto (se encuentra en los primeros 4 bytes)
         int secretFileSize = ByteBuffer.wrap(secretBytes, 0, 4).getInt();
+        System.out.println("SecretBytes[0]: " + secretBytes[0]);
+        System.out.println(secretFileSize);
         System.out.println("(3) -- Extraccion finalizada");
         /*
          * Lo que se encripta es: tamanio archivo (4) || datos archivo || extension
@@ -75,6 +214,8 @@ public class StegoBMP {
          * */
         System.out.println("(4) -- Generando archivo de output");
         //Obtengo la extension para luego agregarsela a nuestro outFile
+
+        System.out.println((char)secretBytes[DATA_SIZE_BYTES + secretFileSize]);
         if(secretBytes[DATA_SIZE_BYTES + secretFileSize] != '.')
             throw new RuntimeException("Error en la decodificacion.");
 
@@ -90,8 +231,6 @@ public class StegoBMP {
 
         os.write(secretBytes, DATA_SIZE_BYTES, secretFileSize);
         System.out.println("(5) -- Finalizado");
-
-        return outputFile;
     }
 
 
@@ -175,7 +314,6 @@ public class StegoBMP {
 
         return secretBytes;
     }
-
     private static String bytesToHex(byte[] bytes) {
         StringBuilder hexString = new StringBuilder(2 * bytes.length);
         for (byte b : bytes) {
@@ -230,6 +368,15 @@ public class StegoBMP {
         }
 
         //Ahora en secretBytes tengo los bytes que estaba ocultando en el bmp
+        System.out.println("aa");
+        System.out.println(ByteBuffer.wrap(payloadBytes, 0,4).getInt());
+        System.out.println(payloadBytes[0]);
+        System.out.println(payloadBytes[1]);
+        System.out.println(payloadBytes[2]);
+        System.out.println(payloadBytes[3]);
+
+
+
         return payloadBytes;
 
     }
@@ -272,4 +419,12 @@ public class StegoBMP {
         return bmpBytes;
     }
 
+    public static String byteToBinaryString(byte b) {
+        StringBuilder binaryString = new StringBuilder();
+        for (int i = 7; i >= 0; i--) {
+            int bit = (b >> i) & 1;
+            binaryString.append(bit);
+        }
+        return binaryString.toString();
+    }
 }

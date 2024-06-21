@@ -91,7 +91,8 @@ public class Main {
             }
             // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
             StegoBMP.extract(bmp, outFileName, stegAlg, pass, a, m);
-        } else if(cmd.hasOption("embed") || cmd.hasOption("em")) {
+        }
+        else if(cmd.hasOption("embed") || cmd.hasOption("em")) {
 
             System.out.println("(2) -- Empezando con el proceso de ocultamiento");
 
@@ -101,6 +102,7 @@ public class Main {
             String pass = null, a = null, m = null;
 
             File fileToHide;
+
             if(cmd.hasOption("in")) {
                 fileToHide = new File(cmd.getOptionValue("in"));
             }else{
@@ -113,12 +115,14 @@ public class Main {
                 if(cmd.hasOption("a"))
                     a = cmd.getOptionValue("a");
                 else
-                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
+                    a = "aes128";
+//                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
                 // Obtenemos el metodo de encadenamiento
                 if(cmd.hasOption("m"))
                     m = cmd.getOptionValue("m");
                 else
-                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
+                    m = "cbc";
+//                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
             }
             // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
             StegoBMP.embed(fileToHide, bmp, outFileName, stegAlg, pass, a, m);

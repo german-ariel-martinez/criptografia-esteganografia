@@ -42,8 +42,6 @@ public class StegoBMP {
         int extensionStart = fileToHide.getName().lastIndexOf('.');
         String extension = fileToHide.getName().substring(extensionStart).concat("\0");
 
-
-
         // Hay que saltear el header del archivo BMP y
         // En el caso de que sea LSBI los primeros 4 bytes
         // representan con un 1 o un cero que bits se invirtieron
@@ -139,8 +137,6 @@ public class StegoBMP {
             int total = patterns[i];
             int unchanged = total - changed;
 
-            System.out.println("For pattern: " + i + " Changed: " + changed + " Total: " + patterns[i] + " Unchanged: " + unchanged);
-
             //  lsb1(patron) || LSBI(lsb1(tamanio) || lsb1(archivo) || lsb1(ext))
 
             if(changed > unchanged) {
@@ -202,12 +198,11 @@ public class StegoBMP {
         byte[] secretBytes = decodeLSB(payloadBits, bmpBytes, from, improved); //incluye la extension y los 4 bytes que me dicen el tamanio del cifrado
 
         // Si tenemos una contraseña entonces esta encriptado
-        if(pass != null) secretBytes = decript(secretBytes, pass, a, m);
+        if(pass != null) secretBytes = decrypt(secretBytes, pass, a, m);
 
         // Obtengo el size del archivo secreto (se encuentra en los primeros 4 bytes)
         int secretFileSize = ByteBuffer.wrap(secretBytes, 0, 4).getInt();
-        System.out.println("SecretBytes[0]: " + secretBytes[0]);
-        System.out.println(secretFileSize);
+
         System.out.println("(3) -- Extraccion finalizada");
         /*
          * Lo que se encripta es: tamanio archivo (4) || datos archivo || extension
@@ -237,24 +232,6 @@ public class StegoBMP {
         System.out.println("(5) -- Finalizado");
     }
 
-
-    // Esta funcion permite generar la clave y el IV a partir de una contraseña
-    // hay que variar la longitud de la key y el IV segun que algoritmo estemos
-    // utilizando, por ejemplo para AES: keyLength = 256 ; ivLength = 128
-    //
-    //    byte[] salt = {0, 0, 0, 0, 0, 0, 0, 0};
-    //    byte[] keyAndIv = generateKeyAndIv("margarita", salt, 10000,256, 128);
-    //    byte[] key = Arrays.copyOfRange(keyAndIv, 0, 256/8);
-    //    byte[] iv = Arrays.copyOfRange(keyAndIv, 256/8, keyAndIv.length);
-    //    System.out.println("Clave -> " + bytesToHex(key));
-    //    System.out.println("IV -> " + bytesToHex(iv));
-    //
-    // Esto genera lo siguiente:
-    //
-    // KEY = 03db0a157acfe8de523760aa731d8122b25f8d99f3173ec0b52849f459a4c20d
-    // IV = 212420edc583a686a94d19a3497363a2
-    //
-    // Que es lo mismo que le da con el ejemplo de la catedra
     static byte[] generateKeyAndIv(String password, byte[] salt, int iterationCount, int keyLength, int ivLength) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
         // Creamos la especificacion de la clave
         PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, iterationCount, keyLength+ivLength);
@@ -263,7 +240,7 @@ public class StegoBMP {
         // Generamos la clave y el IV que van a aparecer concatenados (devolvemos un byte[])
         return factory.generateSecret(spec).getEncoded();
     }
-    private static byte[] decript(byte[] secretBytes, String pass, String a, String m) throws NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    private static byte[] decrypt(byte[] secretBytes, String pass, String a, String m) throws NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, NoSuchPaddingException, InvalidAlgorithmParameterException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
         // Nos fijamos el tamanio de lo que esta encriptado,
         // primeros 4 bytes
         int encSize = ByteBuffer.wrap(secretBytes, 0, 4).getInt();
@@ -386,14 +363,12 @@ public class StegoBMP {
         for (int i = 0; i < 4; i++)
             // Si el ultimo bit de cada byte esta en uno es que ese patron esta invertido
             if((bmpBytes[offset-4+i] & 1) == 1) {
-                System.out.println("Hay un 1");
                 invertedPaterns[i] = true;
             }else
-                System.out.println("Hay un 0");
 
         // Ahora tenemos que deshacer este cambio para seguir con la esteganografica normal
         // recordemos que el offset ya esta desplazado HEADERSIZE + 4 bytes de patterns
-        for (int i = offset; i < bmpBytes.length; i++) {
+        for (i = offset; i < bmpBytes.length; i++) {
             // Agarramos el byte, aplicamos una mascara para quedarnos con el
             // 2do y 3er bit solamente, despues movemos una posicion a la
             // derecha para que al castearlo como int nos matchee con el array de booleans

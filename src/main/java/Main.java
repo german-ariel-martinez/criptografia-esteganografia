@@ -29,8 +29,7 @@ public class Main {
         op.addOption("steg", true, "Algoritmo de esteganografiado: <LSB1 | LSB4 | LSBI>");
         op.addOption("a", true, "Cifrado: <aes128 | aes192 | aes256 | des>");
         op.addOption("m", true, "Modo de encadenamiento a utilizar: <ecb | cfb | ofb | cbc>");
-        op.addOption("pass", true, "Contrasenia de encripcion");
-        //System.out.println(getBitAtPos((byte) 0b00000001, 7));
+        op.addOption("pass", true, "Contraseña de encripcion");
 
         // Creamos un parser para las opciones
         CommandLineParser parser = new DefaultParser();
@@ -73,10 +72,9 @@ public class Main {
 
         // EXTRACCION
         if(cmd.hasOption("extract") || cmd.hasOption("ex")) {
+
             System.out.println("(2) -- Empezando con el proceso de extraccion");
-            // En el caso que el payload este encriptado buscamos
-            // la contrasenia, el algoritmo de encriptacion y el
-            // metodo de encadenamiento
+
             String pass = null, a = null, m = null;
             if(cmd.hasOption("pass")){
                 pass = cmd.getOptionValue("pass");
@@ -94,7 +92,9 @@ public class Main {
             // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
             StegoBMP.extract(bmp, outFileName, stegAlg, pass, a, m);
         } else if(cmd.hasOption("embed") || cmd.hasOption("em")) {
+
             System.out.println("(2) -- Empezando con el proceso de ocultamiento");
+
             // En el caso que el payload este encriptado buscamos
             // la contrasenia, el algoritmo de encriptacion y el
             // metodo de encadenamiento
@@ -102,7 +102,6 @@ public class Main {
 
             File fileToHide;
             if(cmd.hasOption("in")) {
-                System.out.println(cmd.getOptionValue("in"));
                 fileToHide = new File(cmd.getOptionValue("in"));
             }else{
                 throw new RuntimeException("El archivo a ocultar no es valido");

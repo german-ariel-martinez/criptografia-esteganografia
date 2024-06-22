@@ -115,14 +115,14 @@ public class Main {
                 if(cmd.hasOption("a"))
                     a = cmd.getOptionValue("a");
                 else
-                    a = "aes128";
-//                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
+//                    a = "aes128";
+                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
                 // Obtenemos el metodo de encadenamiento
                 if(cmd.hasOption("m"))
                     m = cmd.getOptionValue("m");
                 else
-                    m = "cbc";
-//                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
+//                    m = "cbc";
+                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
             }
             // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
             StegoBMP.embed(fileToHide, bmp, outFileName, stegAlg, pass, a, m);

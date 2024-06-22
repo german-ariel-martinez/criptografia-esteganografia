@@ -1,3 +1,5 @@
+import org.apache.commons.lang3.ArrayUtils;
+
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
@@ -49,15 +51,22 @@ public class StegoBMP {
         // segun el 2do y 3er bit menos significativo de cada byte.
         int from = BMP_HEADER + (improved ? 4 : 0);
 
+        // Para encriptar necesitaremos el payload completo.
+        // Ya que hacerlo por separado seria un error
+        int sizeToHide = fileHideBytes.length;
+        byte[] sizeToHideBytes = ByteBuffer.allocate(4).putInt(sizeToHide).array();
+
+        byte[] entirePayload = ArrayUtils.addAll(sizeToHideBytes, fileHideBytes);
+        entirePayload = ArrayUtils.addAll(entirePayload, extension.getBytes());
 
         if (pass != null){
-            fileHideBytes = encrypt(fileHideBytes, pass, a, m);
+            entirePayload = encrypt(entirePayload, pass, a, m);
         }
 
         // En caso de que sea LSBI debemos tener una copia para poder comparar los bytes que cambian
         byte[] originalBmp = bmpBytes.clone();
 
-        encodeLSB(payloadBits, fileHideBytes, extension, bmpBytes, from, improved);
+        encodeLSB(payloadBits, entirePayload, extension, bmpBytes, from, improved);
 
         if(improved) {
             applyLSBI(bmpBytes, originalBmp, from);
@@ -125,21 +134,23 @@ public class StegoBMP {
     }
 
 
-    private static void encodeLSB(int nBits, byte[] fileToHideBytes, String extension, byte[] bmpBytes, int from, boolean isLsbi) throws IOException {
+    private static void encodeLSB(int nBits, byte[] entirePayloadToHideBytes, String extension, byte[] bmpBytes, int from, boolean isLsbi) throws IOException {
+        // TODO: reemplazar por LSBEncoder ya que este metodo quedo de mas.
         // Primero guardamos el tamaño del archivo a esconder
-        int sizeToHide = fileToHideBytes.length;
-        byte[] sizeToHideBytes = ByteBuffer.allocate(4).putInt(sizeToHide).array();
-
-        int bmpIndex = from;
-        // Escondemos el tamanio
-        bmpIndex = LSBEncoder(sizeToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
-
-        // Escondemos el archivo
-        bmpIndex = LSBEncoder(fileToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
-
-        // Escondemos la extension
-        byte[] extensionBytes = extension.getBytes();
-        bmpIndex = LSBEncoder(extensionBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+        LSBEncoder(entirePayloadToHideBytes, bmpBytes, from, nBits, isLsbi);
+//        int sizeToHide = fileToHideBytes.length;
+//        byte[] sizeToHideBytes = ByteBuffer.allocate(4).putInt(sizeToHide).array();
+//
+//        int bmpIndex = from;
+//        // Escondemos el tamanio
+//        bmpIndex = LSBEncoder(sizeToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+//
+//        // Escondemos el archivo
+//        bmpIndex = LSBEncoder(fileToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
+//
+//        // Escondemos la extension
+//        byte[] extensionBytes = extension.getBytes();
+//        bmpIndex = LSBEncoder(extensionBytes, bmpBytes, bmpIndex, nBits, isLsbi);
 
 
     }
@@ -209,7 +220,7 @@ public class StegoBMP {
                         int bitValue = (currByte >> (8 - nBits - bitIndex)) & ((1 << nBits) - 1);
                         bmpBytes[from] = (byte) ((bmpBytes[from] & ~((1 << nBits) - 1)) | bitValue);
                     }else{
-                        bitIndex -= nBits; //dejo el bitIndex donde esta. (le resto, y luego el for le suma, es lo mismo que se quede en el lugar (hecho feo))
+                        bitIndex -= nBits; //dejo el bitIndex donde esta.
                     }
                     from++;
 
@@ -333,6 +344,8 @@ public class StegoBMP {
                 keyLength = 192; ivLength = 64;
                 cipherType = "DESede";
                 break;
+            default:
+                throw new IllegalArgumentException("Unsupported algorithm: " + a);
         }
         // Revisamos el metodo de encadenamiento a utilizar
         String paddingType = null;
@@ -347,6 +360,8 @@ public class StegoBMP {
             case "ofb":
                 paddingType = "NOPADDING";
                 break;
+            default:
+                throw new IllegalArgumentException("Unsupported algorithm: " + m);
         }
         // Generamos la key y el IV
         byte[] salt = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -360,7 +375,10 @@ public class StegoBMP {
 
         // Crear y configurar el objeto Cipher para desencriptar
         Cipher cipher = Cipher.getInstance(cipherType+"/"+m.toUpperCase()+"/"+paddingType);
-        cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec);
+        if(m.equalsIgnoreCase("ecb"))
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+        else
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec);
 
         // Decodificamos
         secretBytes = cipher.doFinal(secretBytes);
@@ -386,6 +404,8 @@ public class StegoBMP {
                 keyLength = 192; ivLength = 64;
                 cipherType = "DESede";
                 break;
+            default:
+                throw new IllegalArgumentException("Unsupported algorithm: " + a);
         }
 
         // Determinamos el tipo de padding según el modo de encadenamiento
@@ -401,6 +421,8 @@ public class StegoBMP {
             case "ofb":
                 paddingType = "NOPADDING";
                 break;
+            default:
+                throw new IllegalArgumentException("Unsupported algorithm: " + m);
         }
 
         // Generamos la clave y el IV
@@ -413,16 +435,20 @@ public class StegoBMP {
         SecretKeySpec secretKeySpec = new SecretKeySpec(key, cipherType);
         IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
         Cipher cipher = Cipher.getInstance(cipherType + "/" + m.toUpperCase() + "/" + paddingType);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivParameterSpec);
-
+        if(m.equalsIgnoreCase("ecb")){
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+        } else
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivParameterSpec);
+//
 //        fileBytes = cipher.doFinal(fileBytes);
 //
 //        return fileBytes;
 
         // Cifrar los datos
         byte[] encryptedBytes = cipher.doFinal(fileBytes);
-
+//
         int encSize = encryptedBytes.length;
+
 
         // Preparar el resultado con el tamaño al inicio
         ByteBuffer bb = ByteBuffer.allocate(4 + encSize);
@@ -445,7 +471,7 @@ public class StegoBMP {
         return hexString.toString();
     }
 
-    public static String byteToBinaryString(byte b) {
+    private static String byteToBinaryString(byte b) {
         StringBuilder binaryString = new StringBuilder();
         for (int i = 7; i >= 0; i--) {
             int bit = (b >> i) & 1;

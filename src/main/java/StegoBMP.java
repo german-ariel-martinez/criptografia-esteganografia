@@ -7,6 +7,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -38,6 +39,8 @@ public class StegoBMP {
         byte[] bmpBytes = new byte[(int) bmp.length()];
         bmpStream.read(bmpBytes);
 
+        int bmpHeader = ByteBuffer.wrap(bmpBytes, 10, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+
         FileInputStream fileToHideStream = new FileInputStream(fileToHide);
         byte[] fileHideBytes = new byte[(int) fileToHide.length()];
         fileToHideStream.read(fileHideBytes);
@@ -49,7 +52,7 @@ public class StegoBMP {
         // En el caso de que sea LSBI los primeros 4 bytes
         // representan con un 1 o un cero que bits se invirtieron
         // segun el 2do y 3er bit menos significativo de cada byte.
-        int from = BMP_HEADER + (improved ? 4 : 0);
+        int from = bmpHeader + (improved ? 4 : 0);
 
         // Para encriptar necesitaremos el payload completo.
         // Ya que hacerlo por separado seria un error
@@ -93,7 +96,9 @@ public class StegoBMP {
         byte[] bmpBytes = new byte[(int) bmp.length()];
         bmpStream.read(bmpBytes);
 
-        int from = BMP_HEADER + (improved ? 4 : 0);
+        int bmpHeader = ByteBuffer.wrap(bmpBytes, 10, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
+
+        int from = bmpHeader + (improved ? 4 : 0);
 
         // En el caso de que sea LSBI tenemos que desinvertir algunos bits
         if (improved) reverseLSBI(bmpBytes, from);

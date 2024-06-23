@@ -4,6 +4,8 @@ import javax.crypto.*;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -63,6 +65,7 @@ public class Main {
                 throw new RuntimeException("El algoritmo de esteganografiado proporcionado no es valido");
             // Agarramos el archivo BMP
             bmp = new File(cmd.getOptionValue("p"));
+
             // Verificamos el archivo BMP sea correcto segun documentacion y enunciado
             try { validateBMP(bmp); } catch (IOException e) { throw e; }
         }else{
@@ -115,14 +118,14 @@ public class Main {
                 if(cmd.hasOption("a"))
                     a = cmd.getOptionValue("a");
                 else
-//                    a = "aes128";
-                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
+                    a = "aes128";
+//                    throw new RuntimeException("El algoritmo de cifrado proporcionado no es valido");
                 // Obtenemos el metodo de encadenamiento
                 if(cmd.hasOption("m"))
                     m = cmd.getOptionValue("m");
                 else
-//                    m = "cbc";
-                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
+                    m = "cbc";
+//                    throw new RuntimeException("El metodo de encadenamiento proporcionado no es valido");
             }
             // Creamos el File del archivo de salida en el que dejaremos el contenido extraido
             StegoBMP.embed(fileToHide, bmp, outFileName, stegAlg, pass, a, m);
@@ -157,5 +160,7 @@ public class Main {
     private static int getBitAtPos(byte currentByte, int position){
         return ((currentByte & (1 << position)) >> position) == 1 ? 1 : 0;
     }
+
+
 
 }

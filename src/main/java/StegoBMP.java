@@ -20,7 +20,6 @@ import java.util.Arrays;
 public class StegoBMP {
 
     // Variables globales
-    private static final int BMP_HEADER = 54;
     private static final int DATA_SIZE_BYTES = 4;
 
 
@@ -48,6 +47,14 @@ public class StegoBMP {
         int extensionStart = fileToHide.getName().lastIndexOf('.');
         String extension = fileToHide.getName().substring(extensionStart).concat("\0");
 
+        // Tamanio minimo requerido
+        int reqSize = 4 + fileHideBytes.length + extension.length();
+        reqSize *= (8 / payloadBits); // Depende si tendre que poner 1bit por byte o 4
+        reqSize += bmpHeader;
+
+        if(bmp.length() <  reqSize)
+            throw new RuntimeException(String.format("El archivo portador debe tener como minimo %d bytes\nPero tiene: %d", reqSize, bmp.length()));
+
         // Hay que saltear el header del archivo BMP y
         // En el caso de que sea LSBI los primeros 4 bytes
         // representan con un 1 o un cero que bits se invirtieron
@@ -69,7 +76,7 @@ public class StegoBMP {
         // En caso de que sea LSBI debemos tener una copia para poder comparar los bytes que cambian
         byte[] originalBmp = bmpBytes.clone();
 
-        encodeLSB(payloadBits, entirePayload, extension, bmpBytes, from, improved);
+        encodeLSB(entirePayload, bmpBytes, from, payloadBits, improved);
 
         if(improved) {
             applyLSBI(bmpBytes, originalBmp, from);
@@ -97,7 +104,6 @@ public class StegoBMP {
         bmpStream.read(bmpBytes);
 
         int bmpHeader = ByteBuffer.wrap(bmpBytes, 10, 4).order(ByteOrder.LITTLE_ENDIAN).getInt();
-
         int from = bmpHeader + (improved ? 4 : 0);
 
         // En el caso de que sea LSBI tenemos que desinvertir algunos bits
@@ -138,27 +144,6 @@ public class StegoBMP {
         System.out.println("(5) -- Finalizado");
     }
 
-
-    private static void encodeLSB(int nBits, byte[] entirePayloadToHideBytes, String extension, byte[] bmpBytes, int from, boolean isLsbi) throws IOException {
-        // TODO: reemplazar por LSBEncoder ya que este metodo quedo de mas.
-        // Primero guardamos el tamaño del archivo a esconder
-        LSBEncoder(entirePayloadToHideBytes, bmpBytes, from, nBits, isLsbi);
-//        int sizeToHide = fileToHideBytes.length;
-//        byte[] sizeToHideBytes = ByteBuffer.allocate(4).putInt(sizeToHide).array();
-//
-//        int bmpIndex = from;
-//        // Escondemos el tamanio
-//        bmpIndex = LSBEncoder(sizeToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
-//
-//        // Escondemos el archivo
-//        bmpIndex = LSBEncoder(fileToHideBytes, bmpBytes, bmpIndex, nBits, isLsbi);
-//
-//        // Escondemos la extension
-//        byte[] extensionBytes = extension.getBytes();
-//        bmpIndex = LSBEncoder(extensionBytes, bmpBytes, bmpIndex, nBits, isLsbi);
-
-
-    }
 
     private static byte[] decodeLSB(int nBits, byte[] bmpBytes, int from, boolean isLsbi) {
         ByteArrayOutputStream payloadStream = new ByteArrayOutputStream();
@@ -208,7 +193,7 @@ public class StegoBMP {
 
     }
 
-    private static int LSBEncoder(byte[] bytesToHide, byte[] bmpBytes, int from, int nBits, boolean isLsbi) {
+    private static void encodeLSB(byte[] bytesToHide, byte[] bmpBytes, int from, int nBits, boolean isLsbi) {
         if(!isLsbi) {
             for (byte currByte : bytesToHide) {
                 for (int bitIndex = 0; bitIndex < 8; bitIndex += nBits) {
@@ -233,9 +218,6 @@ public class StegoBMP {
             }
 
         }
-
-        return from;
-
     }
 
     private static void applyLSBI(byte[] modifiedBmp, byte[] originalBmp, int from) {
@@ -317,7 +299,7 @@ public class StegoBMP {
         return bmpBytes;
     }
 
-    static byte[] generateKeyAndIv(String password, byte[] salt, int iterationCount, int keyLength, int ivLength) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException {
+    static byte[] generateKeyAndIv(String password, byte[] salt, int iterationCount, int keyLength, int ivLength) throws NoSuchAlgorithmException,  InvalidKeySpecException {
         // Creamos la especificacion de la clave
         PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, iterationCount, keyLength+ivLength);
         // Generamos una fabrica de claves para PBKDF2 con HMAC y SHA-256
@@ -444,14 +426,10 @@ public class StegoBMP {
             cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
         } else
             cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivParameterSpec);
-//
-//        fileBytes = cipher.doFinal(fileBytes);
-//
-//        return fileBytes;
 
         // Cifrar los datos
         byte[] encryptedBytes = cipher.doFinal(fileBytes);
-//
+
         int encSize = encryptedBytes.length;
 
 
